@@ -5,35 +5,27 @@ import com.github.brfrn169.graphbase.exception.GraphNotFoundException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
 
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class GraphService implements Closeable {
 
     private static final Log LOG = LogFactory.getLog(GraphService.class);
 
+    private final GraphCatalogManager graphCatalogManager;
     private final GraphStorage graphStorage;
 
-    private final GraphCatalogManager graphCatalogManager;
-
-    public GraphService() {
-        this(HBaseConfiguration.create());
-    }
-
-    public GraphService(Configuration conf) {
-        graphStorage = new GraphStorage(conf);
+    public GraphService(Configuration conf, GraphStorage graphStorage) {
         graphCatalogManager = new GraphCatalogManager(conf);
+        this.graphStorage = graphStorage;
     }
 
     @Override public void close() throws IOException {
-        try {
-            graphStorage.close();
-        } catch (IOException e) {
-            LOG.error("failed to close graphStorage.", e);
-        }
         try {
             graphCatalogManager.close();
         } catch (IOException e) {
@@ -61,5 +53,36 @@ public class GraphService implements Closeable {
 
     public Optional<GraphConfiguration> getGraphConfiguration(String graphId) {
         return graphCatalogManager.getGraphConfiguration(graphId);
+    }
+
+    public void addNode(String graphId, String nodeId, String nodeType,
+        Map<String, Object> properties) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.addNode(graphConf, nodeId, nodeType, properties);
+    }
+
+    public void deleteNode(String graphId, String nodeId) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.deleteNode(graphConf, nodeId);
+    }
+
+    public void updateNode(String graphId, String nodeId,
+        @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.updateNode(graphConf, nodeId, updateProperties, deleteKeys);
+    }
+
+    public Optional<Node> getNode(String graphId, String nodeId,
+        PropertyProjections propertyProjections) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage.getNode(graphConf, nodeId, propertyProjections);
     }
 }

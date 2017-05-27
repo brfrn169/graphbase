@@ -5,5 +5,5 @@ public final class GraphbaseConstants {
     private GraphbaseConstants() {
     }
 
-    public static final String NAMESPACE = "graphbase";
+    public static final String PROPERTY_ADD_AT = "addAt";
 }
