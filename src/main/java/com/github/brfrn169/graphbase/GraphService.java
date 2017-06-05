@@ -85,4 +85,39 @@ public class GraphService implements Closeable {
 
         return graphStorage.getNode(graphConf, nodeId, propertyProjections);
     }
+
+    public void addRelationship(String graphId, String outNodeId, String relType, String inNodeId,
+        Map<String, Object> properties) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.createRelationship(graphConf, outNodeId, relType, inNodeId, properties);
+    }
+
+    public void deleteRelationship(String graphId, String outNodeId, String relType,
+        String inNodeId) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.deleteRelationship(graphConf, outNodeId, relType, inNodeId);
+    }
+
+    public void updateRelationship(String graphId, String outNodeId, String relType,
+        String inNodeId, @Nullable Map<String, Object> updateProperties,
+        @Nullable Set<String> deleteKeys) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        graphStorage.updateRelationship(graphConf, outNodeId, relType, inNodeId, updateProperties,
+            deleteKeys);
+    }
+
+    public Optional<Relationship> getRelationship(String graphId, String outNodeId, String relType,
+        String inNodeId, PropertyProjections propertyProjections) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage
+            .getRelationship(graphConf, outNodeId, relType, inNodeId, propertyProjections);
+    }
 }

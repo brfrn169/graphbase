@@ -98,6 +98,15 @@ public class HBaseClientWrapper implements Closeable {
         }
     }
 
+    public boolean checkAndDelete(byte[] row, byte[] family, byte[] qualifier, byte[] value,
+        Delete delete, TableName tableName) {
+        try (Table table = connection.getTable(tableName)) {
+            return table.checkAndDelete(row, family, qualifier, value, delete);
+        } catch (IOException e) {
+            throw new GraphbaseException("an error occurred during checkAndDelete", e);
+        }
+    }
+
     public boolean checkAndDelete(byte[] row, byte[] family, byte[] qualifier,
         CompareFilter.CompareOp compareOp, byte[] value, Delete delete, TableName tableName) {
         try (Table table = connection.getTable(tableName)) {

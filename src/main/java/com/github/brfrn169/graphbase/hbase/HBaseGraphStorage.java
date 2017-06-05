@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.github.brfrn169.graphbase.*;
 import com.github.brfrn169.graphbase.exception.NodeAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.NodeNotFoundException;
+import com.github.brfrn169.graphbase.exception.RelationshipAlreadyExistsException;
+import com.github.brfrn169.graphbase.exception.RelationshipNotFoundException;
 import com.github.brfrn169.graphbase.util.Json;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
@@ -33,7 +35,7 @@ public class HBaseGraphStorage implements GraphStorage {
     private static final Hash HASH = MurmurHash3.getInstance();
 
     private static final byte[] ONE_BYTE_ARRAY = new byte[] {0};
-
+    private static final byte[] EXISTENCE_MARKER = ONE_BYTE_ARRAY;
 
     private static final String NAMESPACE = "graphbase";
 
@@ -54,10 +56,23 @@ public class HBaseGraphStorage implements GraphStorage {
         new SingleColumnValueFilter(NODE_FAMILY, NODE_QUALIFIER_TYPE,
             CompareFilter.CompareOp.GREATER_OR_EQUAL, ONE_BYTE_ARRAY);
 
-
     // for the relationship schema
     private static final String REL_TABLE_NAME_SUFFIX = "_rel";
+
     private static final byte[] REL_FAMILY = Bytes.toBytes("r");
+
+    private static final byte REL_ROW_TYPE = (byte) 1;
+
+    private static final Struct REL_STRUCT =
+        new StructBuilder().add(new RawByte()).add(new RawInteger())
+            .add(new RawStringTerminated("\0")).add(new RawStringTerminated("\0"))
+            .add(RawString.ASCENDING).toStruct();
+
+    private static final byte[] REL_QUALIFIER_EXISTENCE_MARKER = HConstants.EMPTY_BYTE_ARRAY;
+
+    private static final Filter REL_EXISTS_FILTER =
+        new SingleColumnValueFilter(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER,
+            CompareFilter.CompareOp.EQUAL, EXISTENCE_MARKER);
 
 
     private final HBaseClientWrapper hbaseClient;
@@ -177,25 +192,23 @@ public class HBaseGraphStorage implements GraphStorage {
     @Override public void updateNode(GraphConfiguration graphConf, String nodeId,
         @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys) {
 
-        byte[] nodeRow = createNodeRow(nodeId);
+        byte[] row = createNodeRow(nodeId);
 
-        // check if the node exists
-        if (!nodeExists(graphConf, nodeRow)) {
+        if (!nodeExists(graphConf, row)) {
             throw new NodeNotFoundException();
         }
 
-        // mutate the node's properties.
-        RowMutations mutation = new RowMutations(nodeRow);
+        RowMutations mutation = new RowMutations(row);
 
         if (updateProperties != null) {
-            Put put = new Put(nodeRow);
+            Put put = new Put(row);
             populatePutWithProperties(put, NODE_FAMILY, updateProperties);
 
             addMutations(mutation, put);
         }
 
         if (deleteKeys != null) {
-            Delete delete = new Delete(nodeRow);
+            Delete delete = new Delete(row);
             deleteKeys.forEach(key -> delete.addColumns(NODE_FAMILY, Bytes.toBytes(key)));
 
             addMutations(mutation, delete);
@@ -236,8 +249,12 @@ public class HBaseGraphStorage implements GraphStorage {
         return Optional.of(resultToNode(result, includeAddAt));
     }
 
-    private boolean nodeExists(GraphConfiguration graphConf, byte[] nowRow) {
-        Get get = new Get(nowRow).addColumn(NODE_FAMILY, NODE_QUALIFIER_TYPE);
+    @Override public boolean nodeExists(GraphConfiguration graphConf, String nodeId) {
+        return nodeExists(graphConf, createNodeRow(nodeId));
+    }
+
+    private boolean nodeExists(GraphConfiguration graphConf, byte[] row) {
+        Get get = new Get(row).addColumn(NODE_FAMILY, NODE_QUALIFIER_TYPE);
         return hbaseClient.exists(get, getNodeTableName(graphConf.getGraphId()));
     }
 
@@ -270,7 +287,7 @@ public class HBaseGraphStorage implements GraphStorage {
                 ret.put(Bytes.toString(entry.getKey()),
                     JSON.readValue(entry.getValue().firstEntry().getValue(), Object.class));
             } else {
-                // NODE_QUALIFIER_TYPE
+                // case of NODE_QUALIFIER_TYPE or REL_QUALIFIER_EXISTENCE_MARKER
 
                 if (includeAddAt) {
                     ret.put(GraphbaseConstants.PROPERTY_ADD_AT,
@@ -280,5 +297,120 @@ public class HBaseGraphStorage implements GraphStorage {
         });
 
         return ret;
+    }
+
+    @Override
+    public void createRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId, Map<String, Object> properties) {
+        Put put = new Put(createRelRow(outNodeId, relType, inNodeId));
+        put.addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER, EXISTENCE_MARKER);
+        populatePutWithProperties(put, REL_FAMILY, properties);
+
+        if (!hbaseClient
+            .checkAndPut(put.getRow(), REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER, null, put,
+                getRelTableName(graphConf.getGraphId()))) {
+            throw new RelationshipAlreadyExistsException();
+        }
+    }
+
+    @Override
+    public void deleteRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId) {
+        Delete delete = new Delete(createRelRow(outNodeId, relType, inNodeId));
+
+        if (!hbaseClient.checkAndDelete(delete.getRow(), REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER,
+            EXISTENCE_MARKER, delete, getRelTableName(graphConf.getGraphId()))) {
+            throw new RelationshipNotFoundException();
+        }
+    }
+
+    @Override
+    public void updateRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId, @Nullable Map<String, Object> updateProperties,
+        @Nullable Set<String> deleteKeys) {
+
+        byte[] row = createRelRow(outNodeId, relType, inNodeId);
+
+        if (!relationshipExists(graphConf, outNodeId, relType, inNodeId))
+            throw new RelationshipNotFoundException();
+
+        RowMutations mutation = new RowMutations(row);
+
+        if (updateProperties != null && updateProperties.size() > 0) {
+            Put put = new Put(row);
+            populatePutWithProperties(put, REL_FAMILY, updateProperties);
+            addMutations(mutation, put);
+        }
+
+        if (deleteKeys != null && deleteKeys.size() > 0) {
+            Delete delete = new Delete(row);
+            deleteKeys.forEach(key -> delete.addColumns(REL_FAMILY, Bytes.toBytes(key)));
+            addMutations(mutation, delete);
+        }
+
+        hbaseClient.mutateRow(mutation, getRelTableName(graphConf.getGraphId()));
+    }
+
+    @Override
+    public Optional<Relationship> getRelationship(GraphConfiguration graphConf, String outNodeId,
+        String relType, String inNodeId, PropertyProjections propertyProjections) {
+
+        byte[] row = createRelRow(outNodeId, relType, inNodeId);
+
+        Get get = new Get(row).setFilter(REL_EXISTS_FILTER);
+
+        boolean includeAddAt = true;
+
+        switch (propertyProjections.getType()) {
+            case NOTHING:
+                includeAddAt = false;
+
+                get.addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
+                break;
+            case PARTIAL:
+                includeAddAt = propertyProjections.getPropertyKeys()
+                    .contains(GraphbaseConstants.PROPERTY_ADD_AT);
+
+                get.addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
+                propertyProjections.getPropertyKeys()
+                    .forEach(key -> get.addColumn(REL_FAMILY, Bytes.toBytes(key)));
+                break;
+        }
+
+        Result result = hbaseClient.get(get, getRelTableName(graphConf.getGraphId()));
+        if (result.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(resultToRel(result, includeAddAt));
+    }
+
+    @Override public boolean relationshipExists(GraphConfiguration graphConf, String outNodeId,
+        String relType, String inNodeId) {
+        return relExists(graphConf, createRelRow(outNodeId, relType, inNodeId));
+    }
+
+    private boolean relExists(GraphConfiguration graphConf, byte[] row) {
+        Get get = new Get(row).addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
+        return hbaseClient.exists(get, getRelTableName(graphConf.getGraphId()));
+    }
+
+    private byte[] createRelRow(String outNodeId, String relType, String inNodeId) {
+        Object[] values =
+            new Object[] {REL_ROW_TYPE, HASH.hash(Bytes.toBytes(outNodeId)), outNodeId, relType,
+                inNodeId};
+        PositionedByteRange byteRange =
+            new SimplePositionedMutableByteRange(REL_STRUCT.encodedLength(values));
+        REL_STRUCT.encode(byteRange, values);
+        return byteRange.getBytes();
+    }
+
+    private Relationship resultToRel(Result result, boolean includeAddAt) {
+        PositionedByteRange byteRange = new SimplePositionedByteRange(result.getRow());
+        String outNodeId = (String) REL_STRUCT.decode(byteRange, 2);
+        String relationshipType = (String) REL_STRUCT.decode(byteRange, 3);
+        String inNodeId = (String) REL_STRUCT.decode(byteRange, 4);
+        return new Relationship(outNodeId, relationshipType, inNodeId,
+            resultToProperties(result, REL_FAMILY, includeAddAt));
     }
 }

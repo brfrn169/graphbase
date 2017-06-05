@@ -2,6 +2,8 @@ package com.github.brfrn169.graphbase;
 
 import com.github.brfrn169.graphbase.exception.NodeAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.NodeNotFoundException;
+import com.github.brfrn169.graphbase.exception.RelationshipAlreadyExistsException;
+import com.github.brfrn169.graphbase.exception.RelationshipNotFoundException;
 import com.github.brfrn169.graphbase.hbase.HBaseGraphStorage;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
@@ -205,6 +207,193 @@ import static org.junit.Assert.*;
             graphService.createGraph(new GraphConfiguration(graphId));
 
             graphService.deleteNode(graphId, nodeId);
+        }
+    }
+
+
+    public static class RelationshipRelatedTest {
+        @Test(expected = RelationshipAlreadyExistsException.class)
+        public void createRelationshipWhenAlreadyRelationshipExists() {
+            final String graphId =
+                "RelationshipRelatedTest-createRelationshipWhenAlreadyRelationshipExists";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            graphService
+                .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap());
+            graphService
+                .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap());
+        }
+
+        @Test public void getRelationship() {
+            final String graphId = "RelationshipRelatedTest-getRelationship";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            final Map<String, Object> properties = new HashMap<>();
+            final String propertyKey = "key";
+            properties.put(propertyKey, "value");
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+            graphService.addRelationship(graphId, outNodeId, relType, inNodeId, properties);
+
+            {
+                Optional<Relationship> rel = graphService
+                    .getRelationship(graphId, outNodeId, relType, inNodeId, withAllProperties());
+                assertTrue(rel.isPresent());
+
+                rel.ifPresent((r) -> {
+                    assertEquals(outNodeId, r.getOutNodeId());
+                    assertEquals(relType, r.getType());
+                    assertEquals(inNodeId, r.getInNodeId());
+
+                    assertEquals(properties.size() + 1, r.getProperties().size());
+                    assertEquals(properties.get(propertyKey), r.getProperties().get(propertyKey));
+                    assertTrue(r.getProperties().containsKey(GraphbaseConstants.PROPERTY_ADD_AT));
+                });
+            }
+
+            {
+                Optional<Relationship> rel = graphService
+                    .getRelationship(graphId, outNodeId, relType, inNodeId, withoutProperties());
+                assertTrue(rel.isPresent());
+
+                rel.ifPresent((r) -> {
+                    assertEquals(outNodeId, r.getOutNodeId());
+                    assertEquals(relType, r.getType());
+                    assertEquals(inNodeId, r.getInNodeId());
+                    assertEquals(0, r.getProperties().size());
+                });
+            }
+
+            {
+                Optional<Relationship> rel = graphService
+                    .getRelationship(graphId, outNodeId, relType, inNodeId,
+                        withProperties(propertyKey));
+                assertTrue(rel.isPresent());
+
+                rel.ifPresent((r) -> {
+                    assertEquals(outNodeId, r.getOutNodeId());
+                    assertEquals(relType, r.getType());
+                    assertEquals(inNodeId, r.getInNodeId());
+
+                    assertEquals(properties.size(), r.getProperties().size());
+                    assertEquals(properties.get(propertyKey), r.getProperties().get(propertyKey));
+                });
+            }
+        }
+
+        @Test public void getRelationshipWhenRelationshipNotExists() {
+            final String graphId =
+                "RelationshipRelatedTest-getRelationshipWhenRelationshipNotExists";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            Optional<Relationship> rel = graphService
+                .getRelationship(graphId, outNodeId, relType, inNodeId, withoutProperties());
+            assertFalse(rel.isPresent());
+        }
+
+        @Test public void updateRelationship() {
+            final String graphId = "RelationshipRelatedTest-updateRelationship";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            final String propertyKey1 = "key1";
+            final String propertyKey2 = "key2";
+
+            final Map<String, Object> properties = new HashMap<>();
+            properties.put(propertyKey1, "value1");
+            properties.put(propertyKey2, "value2");
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            graphService.addRelationship(graphId, outNodeId, relType, inNodeId, properties);
+
+            final Map<String, Object> updateProperties = new HashMap<>();
+            updateProperties.put(propertyKey1, "value3");
+
+            final Set<String> deleteKeys = new HashSet<>();
+            deleteKeys.add(propertyKey2);
+
+            graphService.updateRelationship(graphId, outNodeId, relType, inNodeId, updateProperties,
+                deleteKeys);
+
+            Optional<Relationship> rel = graphService
+                .getRelationship(graphId, outNodeId, relType, inNodeId, withAllProperties());
+            assertTrue(rel.isPresent());
+
+            rel.ifPresent((r) -> {
+                assertEquals(outNodeId, r.getOutNodeId());
+                assertEquals(relType, r.getType());
+                assertEquals(inNodeId, r.getInNodeId());
+
+                assertEquals(2, r.getProperties().size());
+                assertEquals(updateProperties.get(propertyKey1),
+                    r.getProperties().get(propertyKey1));
+                assertFalse(r.getProperties().containsKey(propertyKey2));
+                assertTrue(r.getProperties().containsKey(GraphbaseConstants.PROPERTY_ADD_AT));
+            });
+        }
+
+        @Test(expected = RelationshipNotFoundException.class)
+        public void updateRelationshipWhenRelationshipNotExists() {
+            final String graphId =
+                "RelationshipRelatedTest-updateRelationshipWhenRelationshipNotExists";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            final Map<String, Object> updatedProperties = new HashMap<>();
+            updatedProperties.put("key1", "value");
+
+            final Set<String> deletedKeys = new HashSet<>();
+            deletedKeys.add("key2");
+
+            graphService
+                .updateRelationship(graphId, outNodeId, relType, inNodeId, updatedProperties,
+                    deletedKeys);
+        }
+
+        @Test public void deleteRelationship() {
+            final String graphId = "RelationshipRelatedTest-deleteRelationship";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            graphService
+                .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap());
+
+            graphService.deleteRelationship(graphId, outNodeId, relType, inNodeId);
+
+            Optional<Relationship> rel = graphService
+                .getRelationship(graphId, outNodeId, relType, inNodeId, withoutProperties());
+            assertFalse(rel.isPresent());
+        }
+
+        @Test(expected = RelationshipNotFoundException.class)
+        public void deleteRelationshipWhenRelationshipNotExists() {
+            final String graphId =
+                "RelationshipRelatedTest-deleteRelationshipWhenRelationshipNotExists";
+            final String outNodeId = "outNodeId";
+            final String relType = "relType";
+            final String inNodeId = "inNodeId";
+
+            graphService.createGraph(new GraphConfiguration(graphId));
+
+            graphService.deleteRelationship(graphId, outNodeId, relType, inNodeId);
         }
     }
 }

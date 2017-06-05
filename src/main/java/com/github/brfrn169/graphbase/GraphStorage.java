@@ -21,4 +21,22 @@ public interface GraphStorage extends Closeable {
 
     Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
         PropertyProjections propertyProjections);
+
+    boolean nodeExists(GraphConfiguration graphConf, String nodeId);
+
+    void createRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId, Map<String, Object> properties);
+
+    void deleteRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId);
+
+    void updateRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId, @Nullable Map<String, Object> updateProperties,
+        @Nullable Set<String> deleteKeys);
+
+    Optional<Relationship> getRelationship(GraphConfiguration graphConf, String outNodeId,
+        String relType, String inNodeId, PropertyProjections propertyProjections);
+
+    boolean relationshipExists(GraphConfiguration graphConf, String outNodeId, String relType,
+        String inNodeId);
 }
