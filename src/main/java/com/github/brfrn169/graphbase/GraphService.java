@@ -1,7 +1,8 @@
 package com.github.brfrn169.graphbase;
 
-import com.github.brfrn169.graphbase.exception.GraphAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.GraphNotFoundException;
+import com.github.brfrn169.graphbase.filter.FilterPredicate;
+import com.github.brfrn169.graphbase.sort.SortPredicate;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -9,9 +10,11 @@ import org.apache.hadoop.conf.Configuration;
 import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class GraphService implements Closeable {
 
@@ -34,19 +37,11 @@ public class GraphService implements Closeable {
     }
 
     public void createGraph(GraphConfiguration graphConf) {
-        if (graphCatalogManager.graphExists(graphConf.getGraphId())) {
-            throw new GraphAlreadyExistsException();
-        }
-
         graphCatalogManager.createGraph(graphConf);
         graphStorage.createGraph(graphConf.getGraphId());
     }
 
     public void dropGraph(String graphId) {
-        if (!graphCatalogManager.graphExists(graphId)) {
-            throw new GraphNotFoundException();
-        }
-
         graphCatalogManager.dropGraph(graphId);
         graphStorage.dropGraph(graphId);
     }
@@ -78,14 +73,6 @@ public class GraphService implements Closeable {
         graphStorage.updateNode(graphConf, nodeId, updateProperties, deleteKeys);
     }
 
-    public Optional<Node> getNode(String graphId, String nodeId,
-        PropertyProjections propertyProjections) {
-        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
-            .orElseThrow(GraphNotFoundException::new);
-
-        return graphStorage.getNode(graphConf, nodeId, propertyProjections);
-    }
-
     public void addRelationship(String graphId, String outNodeId, String relType, String inNodeId,
         Map<String, Object> properties) {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
@@ -112,6 +99,14 @@ public class GraphService implements Closeable {
             deleteKeys);
     }
 
+    public Optional<Node> getNode(String graphId, String nodeId,
+        PropertyProjections propertyProjections) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage.getNode(graphConf, nodeId, propertyProjections);
+    }
+
     public Optional<Relationship> getRelationship(String graphId, String outNodeId, String relType,
         String inNodeId, PropertyProjections propertyProjections) {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
@@ -119,5 +114,40 @@ public class GraphService implements Closeable {
 
         return graphStorage
             .getRelationship(graphConf, outNodeId, relType, inNodeId, propertyProjections);
+    }
+
+    public boolean nodeExists(String graphId, String nodeId) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+        return graphStorage.nodeExists(graphConf, nodeId);
+    }
+
+    public boolean relationshipExists(String graphId, String outNodeId, String relType,
+        String inNodeId) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage.relationshipExists(graphConf, outNodeId, relType, inNodeId);
+    }
+
+    public List<Node> getNodes(String graphId, @Nullable List<String> nodeTypes,
+        @Nullable FilterPredicate filter, @Nullable List<SortPredicate> sorts,
+        PropertyProjections propertyProjections) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage.getNodes(graphConf, nodeTypes, filter, sorts, propertyProjections)
+            .collect(Collectors.toList());
+    }
+
+    public List<Relationship> getRelationships(String graphId, @Nullable List<String> relTypes,
+        @Nullable FilterPredicate filter, @Nullable List<SortPredicate> sorts,
+        PropertyProjections propertyProjections) {
+        GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
+            .orElseThrow(GraphNotFoundException::new);
+
+        return graphStorage
+            .getRelationships(graphConf, relTypes, filter, sorts, propertyProjections)
+            .collect(Collectors.toList());
     }
 }

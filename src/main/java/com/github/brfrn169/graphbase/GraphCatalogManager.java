@@ -1,6 +1,8 @@
 package com.github.brfrn169.graphbase;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.github.brfrn169.graphbase.exception.GraphAlreadyExistsException;
+import com.github.brfrn169.graphbase.exception.GraphNotFoundException;
 import com.github.brfrn169.graphbase.exception.GraphbaseException;
 import com.github.brfrn169.graphbase.util.Json;
 import org.apache.curator.framework.CuratorFramework;
@@ -129,23 +131,14 @@ public class GraphCatalogManager implements Closeable {
     }
 
     public void createGraph(GraphConfiguration graphConf) {
-        if (!graphConfMap.containsKey(graphConf.getGraphId())) {
-            try {
-                client.create().withMode(CreateMode.PERSISTENT).withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
-                    .forPath(catalogBasePath + "/" + graphConf.getGraphId(),
-                        json.writeValueAsBytes(graphConf));
-            } catch (final KeeperException.NodeExistsException ignored) {
-            } catch (final Exception e) {
-                throw new GraphbaseException(
-                    "an error occurred during setting graph configuration.", e);
-            }
-        }
-
         try {
-            client.setData().forPath(catalogBasePath + "/" + graphConf.getGraphId(),
-                json.writeValueAsBytes(graphConf));
+            client.create().withMode(CreateMode.PERSISTENT).withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
+                .forPath(catalogBasePath + "/" + graphConf.getGraphId(),
+                    json.writeValueAsBytes(graphConf));
+        } catch (final KeeperException.NodeExistsException e) {
+            throw new GraphAlreadyExistsException();
         } catch (final Exception e) {
-            throw new GraphbaseException("an error occurred during setting graph configuration.",
+            throw new GraphbaseException("an error occurred during creating graph configuration.",
                 e);
         }
     }
@@ -153,7 +146,8 @@ public class GraphCatalogManager implements Closeable {
     public void dropGraph(String graphId) {
         try {
             client.delete().forPath(catalogBasePath + "/" + graphId);
-        } catch (final KeeperException.NoNodeException ignored) {
+        } catch (final KeeperException.NoNodeException e) {
+            throw new GraphNotFoundException();
         } catch (final Exception e) {
             throw new GraphbaseException("an error occurred during deleting graph configuration.",
                 e);

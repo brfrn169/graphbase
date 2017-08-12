@@ -6,12 +6,18 @@ import com.github.brfrn169.graphbase.exception.NodeAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.NodeNotFoundException;
 import com.github.brfrn169.graphbase.exception.RelationshipAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.RelationshipNotFoundException;
+import com.github.brfrn169.graphbase.filter.FilterExecutor;
+import com.github.brfrn169.graphbase.filter.FilterPredicate;
+import com.github.brfrn169.graphbase.filter.FilterPropertyKeysExtractor;
+import com.github.brfrn169.graphbase.sort.SortComparator;
+import com.github.brfrn169.graphbase.sort.SortPredicate;
 import com.github.brfrn169.graphbase.util.Json;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
@@ -21,8 +27,10 @@ import org.apache.hadoop.hbase.util.*;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import static com.github.brfrn169.graphbase.hbase.HBaseClientWrapper.addMutations;
+import static com.github.brfrn169.graphbase.hbase.HBaseClient.addMutations;
 
 public class HBaseGraphStorage implements GraphStorage {
 
@@ -56,6 +64,11 @@ public class HBaseGraphStorage implements GraphStorage {
         new SingleColumnValueFilter(NODE_FAMILY, NODE_QUALIFIER_TYPE,
             CompareFilter.CompareOp.GREATER_OR_EQUAL, ONE_BYTE_ARRAY);
 
+    private static final byte[] NODE_SCAN_START_ROW = new byte[] {NODE_ROW_TYPE};
+    private static final byte[] NODE_SCAN_STOP_ROW = new byte[] {NODE_ROW_TYPE + 1};
+    private static final Pair<byte[], byte[]> NODE_SCAN_ROWS =
+        new Pair<>(NODE_SCAN_START_ROW, NODE_SCAN_STOP_ROW);
+
     // for the relationship schema
     private static final String REL_TABLE_NAME_SUFFIX = "_rel";
 
@@ -74,13 +87,18 @@ public class HBaseGraphStorage implements GraphStorage {
         new SingleColumnValueFilter(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER,
             CompareFilter.CompareOp.EQUAL, EXISTENCE_MARKER);
 
+    private static final byte[] REL_SCAN_START_ROW = new byte[] {REL_ROW_TYPE};
+    private static final byte[] REL_SCAN_STOP_ROW = new byte[] {REL_ROW_TYPE + 1};
+    private static final Pair<byte[], byte[]> REL_SCAN_ROWS =
+        new Pair<>(REL_SCAN_START_ROW, REL_SCAN_STOP_ROW);
 
-    private final HBaseClientWrapper hbaseClient;
+
+    private final HBaseClient hbaseClient;
     private final boolean compression;
     private final int splits;
 
     public HBaseGraphStorage(Configuration conf) {
-        hbaseClient = new HBaseClientWrapper(conf);
+        hbaseClient = new HBaseClient(conf);
         compression = conf.getBoolean(TABLE_COMPRESSION_CONF_KEY, true);
         splits = conf.getInt(TABLE_SPLITS_CONF_KEY, 1);
 
@@ -241,12 +259,81 @@ public class HBaseGraphStorage implements GraphStorage {
                 break;
         }
 
-        Result result = hbaseClient.get(get, getNodeTableName(graphConf.getGraphId()));
-        if (result.isEmpty()) {
-            return Optional.empty();
+        boolean includeAddAt2 = includeAddAt; // too ugly
+        return hbaseClient.get(get, getNodeTableName(graphConf.getGraphId()),
+            result -> Optional.of(resultToNode(result, includeAddAt2)));
+    }
+
+    @Override
+    public Stream<Node> getNodes(GraphConfiguration graphConf, @Nullable List<String> nodeTypes,
+        @Nullable FilterPredicate filter, @Nullable List<SortPredicate> sorts,
+        PropertyProjections propertyProjections) {
+
+        Pair<byte[], byte[]> nodeScanRows = createNodeScanRows();
+        byte[] startRow = nodeScanRows.getFirst();
+        byte[] stopRow = nodeScanRows.getSecond();
+
+        Scan scan = new Scan(startRow, stopRow);
+        if (nodeTypes != null && !nodeTypes.isEmpty()) {
+            scan.setFilter(nodeTypesFilter(nodeTypes));
         }
 
-        return Optional.of(resultToNode(result, includeAddAt));
+        PropertyProjections propProjections = propertyProjections;
+        if (filter != null || sorts != null) {
+            Set<String> propertyKeys = new HashSet<>();
+            if (filter != null) {
+                FilterPropertyKeysExtractor filterPropertyKeysExtractor =
+                    new FilterPropertyKeysExtractor(filter);
+                propertyKeys.addAll(filterPropertyKeysExtractor.extract());
+            }
+
+            if (sorts != null) {
+                sorts.forEach(s -> propertyKeys.add(s.getPropertyKey()));
+            }
+            propProjections = propertyProjections.merge(propertyKeys);
+        }
+
+        boolean includeAddAt = true;
+
+        switch (propProjections.getType()) {
+            case NOTHING:
+                includeAddAt = false;
+
+                scan.addColumn(NODE_FAMILY, NODE_QUALIFIER_TYPE);
+                break;
+            case PARTIAL:
+                includeAddAt =
+                    propProjections.getPropertyKeys().contains(GraphbaseConstants.PROPERTY_ADD_AT);
+
+                scan.addColumn(NODE_FAMILY, NODE_QUALIFIER_TYPE);
+                propProjections.getPropertyKeys()
+                    .forEach(key -> scan.addColumn(NODE_FAMILY, Bytes.toBytes(key)));
+                break;
+        }
+
+        boolean includeAddAt2 = includeAddAt; // too ugly
+        Stream<Node> ret = hbaseClient.scan(scan, getNodeTableName(graphConf.getGraphId()),
+            result -> resultToNode(result, includeAddAt2));
+
+        if (filter != null) {
+            FilterExecutor filterExecutor = new FilterExecutor(filter);
+            ret = ret.filter(filterExecutor::execute);
+        }
+
+        if (sorts != null) {
+            SortComparator sortComparator = new SortComparator(sorts);
+            ret = ret.sorted(sortComparator);
+        }
+
+        ret = ret.map(r -> {
+            Map<String, Object> properties = propertyProjections.filter(r.getProperties());
+            if (r.getProperties() != null) {
+                return new Node(r.getId(), r.getType(), properties);
+            }
+            return r;
+        });
+
+        return ret;
     }
 
     @Override public boolean nodeExists(GraphConfiguration graphConf, String nodeId) {
@@ -266,9 +353,20 @@ public class HBaseGraphStorage implements GraphStorage {
         return byteRange.getBytes();
     }
 
+    private Pair<byte[], byte[]> createNodeScanRows() {
+        return NODE_SCAN_ROWS;
+    }
+
+    private Filter nodeTypesFilter(List<String> nodeTypes) {
+        List<Filter> filters = nodeTypes.stream().map(
+            type -> new SingleColumnValueFilter(NODE_FAMILY, NODE_QUALIFIER_TYPE,
+                CompareFilter.CompareOp.EQUAL, Bytes.toBytes(type))).collect(Collectors.toList());
+        return new FilterList(FilterList.Operator.MUST_PASS_ONE, filters);
+    }
+
     private void populatePutWithProperties(Put put, byte[] family, Map<String, Object> properties) {
-        properties.entrySet().forEach(entry -> put.addColumn(family, Bytes.toBytes(entry.getKey()),
-            JSON.writeValueAsBytes(entry.getValue())));
+        properties.forEach((key, value) -> put
+            .addColumn(family, Bytes.toBytes(key), JSON.writeValueAsBytes(value)));
     }
 
     private Node resultToNode(Result result, boolean includeAddAt) {
@@ -282,16 +380,15 @@ public class HBaseGraphStorage implements GraphStorage {
         boolean includeAddAt) {
         Map<String, Object> ret = new HashMap<>();
 
-        result.getMap().get(family).entrySet().forEach(entry -> {
-            if (entry.getKey().length > 0) {
-                ret.put(Bytes.toString(entry.getKey()),
-                    JSON.readValue(entry.getValue().firstEntry().getValue(), Object.class));
+        result.getMap().get(family).forEach((key, value) -> {
+            if (key.length > 0) {
+                ret.put(Bytes.toString(key),
+                    JSON.readValue(value.firstEntry().getValue(), Object.class));
             } else {
                 // case of NODE_QUALIFIER_TYPE or REL_QUALIFIER_EXISTENCE_MARKER
 
                 if (includeAddAt) {
-                    ret.put(GraphbaseConstants.PROPERTY_ADD_AT,
-                        entry.getValue().firstEntry().getKey());
+                    ret.put(GraphbaseConstants.PROPERTY_ADD_AT, value.firstEntry().getKey());
                 }
             }
         });
@@ -331,7 +428,7 @@ public class HBaseGraphStorage implements GraphStorage {
 
         byte[] row = createRelRow(outNodeId, relType, inNodeId);
 
-        if (!relationshipExists(graphConf, outNodeId, relType, inNodeId))
+        if (!relExists(graphConf, row))
             throw new RelationshipNotFoundException();
 
         RowMutations mutation = new RowMutations(row);
@@ -377,12 +474,82 @@ public class HBaseGraphStorage implements GraphStorage {
                 break;
         }
 
-        Result result = hbaseClient.get(get, getRelTableName(graphConf.getGraphId()));
-        if (result.isEmpty()) {
-            return Optional.empty();
+        boolean includeAddAt2 = includeAddAt; // too ugly
+        return hbaseClient.get(get, getRelTableName(graphConf.getGraphId()),
+            result -> Optional.of(resultToRel(result, includeAddAt2)));
+    }
+
+    @Override public Stream<Relationship> getRelationships(GraphConfiguration graphConf,
+        @Nullable List<String> relTypes, @Nullable FilterPredicate filter,
+        @Nullable List<SortPredicate> sorts, PropertyProjections propertyProjections) {
+
+        Pair<byte[], byte[]> relScanRows = createRelScanRows();
+        byte[] startRow = relScanRows.getFirst();
+        byte[] stopRow = relScanRows.getSecond();
+
+        Scan scan = new Scan(startRow, stopRow).setFilter(REL_EXISTS_FILTER);
+
+        PropertyProjections propProjections = propertyProjections;
+        if (filter != null || sorts != null) {
+            Set<String> propertyKeys = new HashSet<>();
+            if (filter != null) {
+                FilterPropertyKeysExtractor filterPropertyKeysExtractor =
+                    new FilterPropertyKeysExtractor(filter);
+                propertyKeys.addAll(filterPropertyKeysExtractor.extract());
+            }
+
+            if (sorts != null) {
+                sorts.forEach(s -> propertyKeys.add(s.getPropertyKey()));
+            }
+            propProjections = propertyProjections.merge(propertyKeys);
         }
 
-        return Optional.of(resultToRel(result, includeAddAt));
+        boolean includeAddAt = true;
+
+        switch (propProjections.getType()) {
+            case NOTHING:
+                includeAddAt = false;
+
+                scan.addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
+                break;
+            case PARTIAL:
+                includeAddAt =
+                    propProjections.getPropertyKeys().contains(GraphbaseConstants.PROPERTY_ADD_AT);
+
+                scan.addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
+                propProjections.getPropertyKeys()
+                    .forEach(key -> scan.addColumn(REL_FAMILY, Bytes.toBytes(key)));
+                break;
+        }
+
+        boolean includeAddAt2 = includeAddAt; // too ugly
+        Stream<Relationship> ret = hbaseClient.scan(scan, getRelTableName(graphConf.getGraphId()),
+            result -> resultToRel(result, includeAddAt2));
+
+        if (relTypes != null && !relTypes.isEmpty()) {
+            Set<String> typesSet = new HashSet<>(relTypes);
+            ret = ret.filter(r -> typesSet.contains(r.getType()));
+        }
+
+        if (filter != null) {
+            FilterExecutor filterExecutor = new FilterExecutor(filter);
+            ret = ret.filter(filterExecutor::execute);
+        }
+
+        if (sorts != null) {
+            SortComparator sortComparator = new SortComparator(sorts);
+            ret = ret.sorted(sortComparator);
+        }
+
+        ret = ret.map(r -> {
+            Map<String, Object> properties = propertyProjections.filter(r.getProperties());
+            if (r.getProperties() != null) {
+                return new Relationship(r.getOutNodeId(), r.getType(), r.getInNodeId(), properties);
+            }
+            return r;
+        });
+
+        return ret;
     }
 
     @Override public boolean relationshipExists(GraphConfiguration graphConf, String outNodeId,
@@ -403,6 +570,10 @@ public class HBaseGraphStorage implements GraphStorage {
             new SimplePositionedMutableByteRange(REL_STRUCT.encodedLength(values));
         REL_STRUCT.encode(byteRange, values);
         return byteRange.getBytes();
+    }
+
+    private Pair<byte[], byte[]> createRelScanRows() {
+        return REL_SCAN_ROWS;
     }
 
     private Relationship resultToRel(Result result, boolean includeAddAt) {

@@ -1,10 +1,15 @@
 package com.github.brfrn169.graphbase;
 
+import com.github.brfrn169.graphbase.filter.FilterPredicate;
+import com.github.brfrn169.graphbase.sort.SortPredicate;
+
 import javax.annotation.Nullable;
 import java.io.Closeable;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 public interface GraphStorage extends Closeable {
     void createGraph(String graphId);
@@ -19,11 +24,6 @@ public interface GraphStorage extends Closeable {
     void updateNode(GraphConfiguration graphConf, String nodeId,
         @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys);
 
-    Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
-        PropertyProjections propertyProjections);
-
-    boolean nodeExists(GraphConfiguration graphConf, String nodeId);
-
     void createRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
         String inNodeId, Map<String, Object> properties);
 
@@ -34,9 +34,22 @@ public interface GraphStorage extends Closeable {
         String inNodeId, @Nullable Map<String, Object> updateProperties,
         @Nullable Set<String> deleteKeys);
 
+    Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
+        PropertyProjections propertyProjections);
+
     Optional<Relationship> getRelationship(GraphConfiguration graphConf, String outNodeId,
         String relType, String inNodeId, PropertyProjections propertyProjections);
 
+    boolean nodeExists(GraphConfiguration graphConf, String nodeId);
+
     boolean relationshipExists(GraphConfiguration graphConf, String outNodeId, String relType,
         String inNodeId);
+
+    Stream<Node> getNodes(GraphConfiguration graphConf, @Nullable List<String> nodeTypes,
+        @Nullable FilterPredicate filter, @Nullable List<SortPredicate> sorts,
+        PropertyProjections propertyProjections);
+
+    Stream<Relationship> getRelationships(GraphConfiguration graphConf,
+        @Nullable List<String> relTypes, @Nullable FilterPredicate filter,
+        @Nullable List<SortPredicate> sorts, PropertyProjections propertyProjections);
 }

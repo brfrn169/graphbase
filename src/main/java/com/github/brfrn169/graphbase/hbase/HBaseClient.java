@@ -10,14 +10,20 @@ import org.apache.hadoop.hbase.filter.CompareFilter;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Optional;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.function.Function;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
-public class HBaseClientWrapper implements Closeable {
+public class HBaseClient implements Closeable {
 
-    private static final Log LOG = LogFactory.getLog(HBaseClientWrapper.class);
+    private static final Log LOG = LogFactory.getLog(HBaseClient.class);
 
     private final Connection connection;
 
-    public HBaseClientWrapper(Configuration conf) {
+    public HBaseClient(Configuration conf) {
         try {
             connection = ConnectionFactory.createConnection(conf);
         } catch (IOException e) {
@@ -142,11 +148,37 @@ public class HBaseClientWrapper implements Closeable {
         }
     }
 
-    public Result get(Get get, TableName tableName) {
+    public <R> Optional<R> get(Get get, TableName tableName,
+        Function<Result, Optional<R>> callback) {
         try (Table table = connection.getTable(tableName)) {
-            return table.get(get);
+            Result result = table.get(get);
+            if (result.isEmpty()) {
+                return Optional.empty();
+            }
+            return callback.apply(result);
         } catch (IOException e) {
             throw new GraphbaseException("an error occurred during get", e);
+        }
+    }
+
+    public <R> Stream<R> scan(Scan scan, TableName tableName, Function<Result, R> callback) {
+
+        try {
+            Table table = connection.getTable(tableName);
+            ResultScanner scanner = table.getScanner(scan);
+
+            return StreamSupport.stream(
+                Spliterators.spliteratorUnknownSize(scanner.iterator(), Spliterator.ORDERED), false)
+                .map(callback).onClose(() -> {
+                    scanner.close();
+                    try {
+                        table.close();
+                    } catch (IOException e) {
+                        throw new GraphbaseException("an error occurred during closing a table", e);
+                    }
+                });
+        } catch (IOException e) {
+            throw new GraphbaseException("an error occurred during scan", e);
         }
     }
 }
