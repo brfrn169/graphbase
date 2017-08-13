@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class GraphService implements Closeable {
 
@@ -136,8 +137,10 @@ public class GraphService implements Closeable {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
             .orElseThrow(GraphNotFoundException::new);
 
-        return graphStorage.getNodes(graphConf, nodeTypes, filter, sorts, propertyProjections)
-            .collect(Collectors.toList());
+        try (Stream<Node> nodes = graphStorage
+            .getNodes(graphConf, nodeTypes, filter, sorts, propertyProjections)) {
+            return nodes.collect(Collectors.toList());
+        }
     }
 
     public List<Relationship> getRelationships(String graphId, @Nullable List<String> relTypes,
@@ -146,8 +149,9 @@ public class GraphService implements Closeable {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
             .orElseThrow(GraphNotFoundException::new);
 
-        return graphStorage
-            .getRelationships(graphConf, relTypes, filter, sorts, propertyProjections)
-            .collect(Collectors.toList());
+        try (Stream<Relationship> rels = graphStorage
+            .getRelationships(graphConf, relTypes, filter, sorts, propertyProjections)) {
+            return rels.collect(Collectors.toList());
+        }
     }
 }
