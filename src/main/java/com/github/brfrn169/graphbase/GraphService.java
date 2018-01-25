@@ -39,7 +39,7 @@ public class GraphService implements Closeable {
 
     public void createGraph(GraphConfiguration graphConf) {
         graphCatalogManager.createGraph(graphConf);
-        graphStorage.createGraph(graphConf.getGraphId());
+        graphStorage.createGraph(graphConf.graphId());
     }
 
     public void dropGraph(String graphId) {

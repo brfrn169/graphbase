@@ -18,51 +18,51 @@ public class FilterExecutor implements FilterPredicateVisitor<Entity, Boolean> {
     }
 
     @Override public Boolean visit(EqualFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) == 0;
     }
 
     @Override public Boolean visit(NotEqualFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) != 0;
     }
 
     @Override public Boolean visit(GreaterFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) > 0;
     }
 
     @Override public Boolean visit(GreaterOrEqualFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) >= 0;
     }
 
     @Override public Boolean visit(LessFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) < 0;
     }
 
     @Override public Boolean visit(LessOrEqualFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null
             && Properties.comparePropertyValue(value, filterPredicate.propertyValue) <= 0;
     }
 
     @Override public Boolean visit(IsNullFilterPredicate filterPredicate, Entity target) {
-        return target.getPropertyValue(filterPredicate.propertyKey) == null;
+        return target.propertyValue(filterPredicate.propertyKey) == null;
     }
 
     @Override public Boolean visit(IsNotNullFilterPredicate filterPredicate, Entity target) {
-        return target.getPropertyValue(filterPredicate.propertyKey) != null;
+        return target.propertyValue(filterPredicate.propertyKey) != null;
     }
 
     @Override public Boolean visit(RegexFilterPredicate filterPredicate, Entity target) {
-        Object value = target.getPropertyValue(filterPredicate.propertyKey);
+        Object value = target.propertyValue(filterPredicate.propertyKey);
         return value != null && Pattern.compile(filterPredicate.regex).matcher((String) value)
             .matches();
     }

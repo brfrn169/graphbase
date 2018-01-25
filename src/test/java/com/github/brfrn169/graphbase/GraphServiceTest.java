@@ -12,26 +12,35 @@ import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static com.github.brfrn169.graphbase.PropertyProjections.Builder.*;
+import static com.github.brfrn169.graphbase.PropertyProjections.Builder.withAllProperties;
+import static com.github.brfrn169.graphbase.PropertyProjections.Builder.withProperties;
+import static com.github.brfrn169.graphbase.PropertyProjections.Builder.withoutProperties;
 import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.greater;
 import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.greaterOrEqual;
 import static com.github.brfrn169.graphbase.sort.SortPredicate.Builder.asc;
 import static com.github.brfrn169.graphbase.sort.SortPredicate.Builder.desc;
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.hasItems;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
 import static org.hamcrest.collection.IsMapContaining.hasEntry;
 import static org.hamcrest.collection.IsMapContaining.hasKey;
 import static org.junit.Assert.assertThat;
-
-;
 
 @RunWith(Enclosed.class) public abstract class GraphServiceTest {
 
@@ -78,8 +87,7 @@ import static org.junit.Assert.assertThat;
             Optional<GraphConfiguration> graphConfiguration =
                 graphService.getGraphConfiguration(graphId);
             assertThat(graphConfiguration.isPresent(), is(true));
-            graphConfiguration
-                .ifPresent(graphConf -> assertThat(graphConf.getGraphId(), is(graphId)));
+            graphConfiguration.ifPresent(graphConf -> assertThat(graphConf.graphId(), is(graphId)));
 
             graphService.dropGraph(graphId);
 
@@ -128,14 +136,14 @@ import static org.junit.Assert.assertThat;
             assertThat(node.isPresent(), is(true));
 
             node.ifPresent((n) -> {
-                assertThat(n.getId(), is(nodeId));
-                assertThat(n.getType(), is(nodeType));
+                assertThat(n.id(), is(nodeId));
+                assertThat(n.type(), is(nodeType));
 
-                assertThat(n.getProperties().entrySet(), hasSize(2));
-                assertThat(n.getProperties(),
+                assertThat(n.properties().entrySet(), hasSize(2));
+                assertThat(n.properties(),
                     hasEntry(propertyKey1, updateProperties.get(propertyKey1)));
-                assertThat(n.getProperties(), not(hasKey(propertyKey2)));
-                assertThat(n.getProperties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
+                assertThat(n.properties(), not(hasKey(propertyKey2)));
+                assertThat(n.properties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
             });
         }
 
@@ -195,13 +203,12 @@ import static org.junit.Assert.assertThat;
                 assertThat(node.isPresent(), is(true));
 
                 node.ifPresent((n) -> {
-                    assertThat(n.getId(), is(nodeId));
-                    assertThat(n.getType(), is(nodeType));
+                    assertThat(n.id(), is(nodeId));
+                    assertThat(n.type(), is(nodeType));
 
-                    assertThat(n.getProperties().entrySet(), hasSize(properties.size() + 1));
-                    assertThat(n.getProperties(),
-                        hasEntry(propertyKey, properties.get(propertyKey)));
-                    assertThat(n.getProperties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
+                    assertThat(n.properties().entrySet(), hasSize(properties.size() + 1));
+                    assertThat(n.properties(), hasEntry(propertyKey, properties.get(propertyKey)));
+                    assertThat(n.properties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
                 });
             }
 
@@ -210,9 +217,9 @@ import static org.junit.Assert.assertThat;
                 assertThat(node.isPresent(), is(true));
 
                 node.ifPresent((n) -> {
-                    assertThat(n.getId(), is(nodeId));
-                    assertThat(n.getType(), is(nodeType));
-                    assertThat(n.getProperties().entrySet(), is(empty()));
+                    assertThat(n.id(), is(nodeId));
+                    assertThat(n.type(), is(nodeType));
+                    assertThat(n.properties().entrySet(), is(empty()));
                 });
             }
 
@@ -222,12 +229,11 @@ import static org.junit.Assert.assertThat;
                 assertThat(node.isPresent(), is(true));
 
                 node.ifPresent((n) -> {
-                    assertThat(n.getId(), is(nodeId));
-                    assertThat(n.getType(), is(nodeType));
+                    assertThat(n.id(), is(nodeId));
+                    assertThat(n.type(), is(nodeType));
 
-                    assertThat(n.getProperties().entrySet(), hasSize(properties.size()));
-                    assertThat(n.getProperties(),
-                        hasEntry(propertyKey, properties.get(propertyKey)));
+                    assertThat(n.properties().entrySet(), hasSize(properties.size()));
+                    assertThat(n.properties(), hasEntry(propertyKey, properties.get(propertyKey)));
                 });
             }
         }
@@ -269,7 +275,7 @@ import static org.junit.Assert.assertThat;
             {
                 List<String> nodeIds =
                     graphService.getNodes(graphId, null, null, null, withoutProperties()).stream()
-                        .map(Node::getId).collect(Collectors.toList());
+                        .map(Node::id).collect(Collectors.toList());
 
                 assertThat(nodeIds, hasSize(5));
                 assertThat(nodeIds, hasItems(
@@ -279,7 +285,7 @@ import static org.junit.Assert.assertThat;
             {
                 Set<String> nodeIds = graphService
                     .getNodes(graphId, Arrays.asList(nodeType1, nodeType2), null, null,
-                        withoutProperties()).stream().map(Node::getId).collect(Collectors.toSet());
+                        withoutProperties()).stream().map(Node::id).collect(Collectors.toSet());
 
                 assertThat(nodeIds, hasSize(5));
                 assertThat(nodeIds, hasItems(
@@ -289,7 +295,7 @@ import static org.junit.Assert.assertThat;
             {
                 Set<String> nodeIds = graphService
                     .getNodes(graphId, Collections.singletonList(nodeType1), null, null,
-                        withoutProperties()).stream().map(Node::getId).collect(Collectors.toSet());
+                        withoutProperties()).stream().map(Node::id).collect(Collectors.toSet());
 
                 assertThat(nodeIds, hasSize(3));
                 assertThat(nodeIds, hasItems(
@@ -299,7 +305,7 @@ import static org.junit.Assert.assertThat;
             {
                 Set<String> nodeIds = new HashSet<>();
                 graphService.getNodes(graphId, Collections.singletonList(nodeType2), null, null,
-                    withoutProperties()).forEach(node -> nodeIds.add(node.getId()));
+                    withoutProperties()).forEach(node -> nodeIds.add(node.id()));
 
                 assertThat(nodeIds, hasSize(2));
                 assertThat(nodeIds, hasItems(
@@ -323,8 +329,8 @@ import static org.junit.Assert.assertThat;
                     .getNodes(graphId, null, greater(propertyKey, 3), null, withoutProperties());
 
                 assertThat(result, hasSize(1));
-                assertThat(result.get(0).getId(), is("nodeId2"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).id(), is("nodeId2"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
             }
 
             {
@@ -333,10 +339,10 @@ import static org.junit.Assert.assertThat;
                         withoutProperties());
 
                 assertThat(result, hasSize(2));
-                assertThat(result.get(0).getId(), is("nodeId1"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
-                assertThat(result.get(1).getId(), is("nodeId2"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).id(), is("nodeId1"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
+                assertThat(result.get(1).id(), is("nodeId2"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
             }
         }
 
@@ -357,12 +363,12 @@ import static org.junit.Assert.assertThat;
                         withoutProperties());
 
                 assertThat(result, hasSize(3));
-                assertThat(result.get(0).getId(), is("nodeId3"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
-                assertThat(result.get(1).getId(), is("nodeId1"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
-                assertThat(result.get(2).getId(), is("nodeId2"));
-                assertThat(result.get(2).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).id(), is("nodeId3"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
+                assertThat(result.get(1).id(), is("nodeId1"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
+                assertThat(result.get(2).id(), is("nodeId2"));
+                assertThat(result.get(2).properties().entrySet(), is(empty()));
             }
 
             {
@@ -371,12 +377,12 @@ import static org.junit.Assert.assertThat;
                         withoutProperties());
 
                 assertThat(result, hasSize(3));
-                assertThat(result.get(0).getId(), is("nodeId2"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
-                assertThat(result.get(1).getId(), is("nodeId1"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
-                assertThat(result.get(2).getId(), is("nodeId3"));
-                assertThat(result.get(2).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).id(), is("nodeId2"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
+                assertThat(result.get(1).id(), is("nodeId1"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
+                assertThat(result.get(2).id(), is("nodeId3"));
+                assertThat(result.get(2).properties().entrySet(), is(empty()));
             }
         }
     }
@@ -428,15 +434,15 @@ import static org.junit.Assert.assertThat;
             assertThat(rel.isPresent(), is(true));
 
             rel.ifPresent((r) -> {
-                assertThat(r.getOutNodeId(), is(outNodeId));
-                assertThat(r.getType(), is(relType));
-                assertThat(r.getInNodeId(), is(inNodeId));
+                assertThat(r.outNodeId(), is(outNodeId));
+                assertThat(r.type(), is(relType));
+                assertThat(r.inNodeId(), is(inNodeId));
 
-                assertThat(r.getProperties().entrySet(), hasSize(2));
-                assertThat(r.getProperties(),
+                assertThat(r.properties().entrySet(), hasSize(2));
+                assertThat(r.properties(),
                     hasEntry(propertyKey1, updateProperties.get(propertyKey1)));
-                assertThat(r.getProperties(), not(hasKey(propertyKey2)));
-                assertThat(r.getProperties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
+                assertThat(r.properties(), not(hasKey(propertyKey2)));
+                assertThat(r.properties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
             });
         }
 
@@ -510,14 +516,13 @@ import static org.junit.Assert.assertThat;
                 assertThat(rel.isPresent(), is(true));
 
                 rel.ifPresent((r) -> {
-                    assertThat(r.getOutNodeId(), is(outNodeId));
-                    assertThat(r.getType(), is(relType));
-                    assertThat(r.getInNodeId(), is(inNodeId));
+                    assertThat(r.outNodeId(), is(outNodeId));
+                    assertThat(r.type(), is(relType));
+                    assertThat(r.inNodeId(), is(inNodeId));
 
-                    assertThat(r.getProperties().entrySet(), hasSize(properties.size() + 1));
-                    assertThat(r.getProperties(),
-                        hasEntry(propertyKey, properties.get(propertyKey)));
-                    assertThat(r.getProperties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
+                    assertThat(r.properties().entrySet(), hasSize(properties.size() + 1));
+                    assertThat(r.properties(), hasEntry(propertyKey, properties.get(propertyKey)));
+                    assertThat(r.properties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
                 });
             }
 
@@ -527,10 +532,10 @@ import static org.junit.Assert.assertThat;
                 assertThat(rel.isPresent(), is(true));
 
                 rel.ifPresent((r) -> {
-                    assertThat(r.getOutNodeId(), is(outNodeId));
-                    assertThat(r.getType(), is(relType));
-                    assertThat(r.getInNodeId(), is(inNodeId));
-                    assertThat(r.getProperties().entrySet(), is(empty()));
+                    assertThat(r.outNodeId(), is(outNodeId));
+                    assertThat(r.type(), is(relType));
+                    assertThat(r.inNodeId(), is(inNodeId));
+                    assertThat(r.properties().entrySet(), is(empty()));
                 });
             }
 
@@ -541,13 +546,12 @@ import static org.junit.Assert.assertThat;
                 assertThat(rel.isPresent(), is(true));
 
                 rel.ifPresent((r) -> {
-                    assertThat(r.getOutNodeId(), is(outNodeId));
-                    assertThat(r.getType(), is(relType));
-                    assertThat(r.getInNodeId(), is(inNodeId));
+                    assertThat(r.outNodeId(), is(outNodeId));
+                    assertThat(r.type(), is(relType));
+                    assertThat(r.inNodeId(), is(inNodeId));
 
-                    assertThat(r.getProperties().entrySet(), hasSize(properties.size()));
-                    assertThat(r.getProperties(),
-                        hasEntry(propertyKey, properties.get(propertyKey)));
+                    assertThat(r.properties().entrySet(), hasSize(properties.size()));
+                    assertThat(r.properties(), hasEntry(propertyKey, properties.get(propertyKey)));
                 });
             }
         }
@@ -676,10 +680,10 @@ import static org.junit.Assert.assertThat;
 
                 assertThat(result, hasSize(1));
 
-                assertThat(result.get(0).getOutNodeId(), is("outNodeId2"));
-                assertThat(result.get(0).getType(), is(relType));
-                assertThat(result.get(0).getInNodeId(), is("inNodeId2"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).outNodeId(), is("outNodeId2"));
+                assertThat(result.get(0).type(), is(relType));
+                assertThat(result.get(0).inNodeId(), is("inNodeId2"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
             }
 
             {
@@ -689,15 +693,15 @@ import static org.junit.Assert.assertThat;
 
                 assertThat(result, hasSize(2));
 
-                assertThat(result.get(0).getOutNodeId(), is("outNodeId2"));
-                assertThat(result.get(0).getType(), is(relType));
-                assertThat(result.get(0).getInNodeId(), is("inNodeId2"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).outNodeId(), is("outNodeId2"));
+                assertThat(result.get(0).type(), is(relType));
+                assertThat(result.get(0).inNodeId(), is("inNodeId2"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
 
-                assertThat(result.get(1).getOutNodeId(), is("outNodeId1"));
-                assertThat(result.get(1).getType(), is(relType));
-                assertThat(result.get(1).getInNodeId(), is("inNodeId1"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(1).outNodeId(), is("outNodeId1"));
+                assertThat(result.get(1).type(), is(relType));
+                assertThat(result.get(1).inNodeId(), is("inNodeId1"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
             }
         }
 
@@ -721,20 +725,20 @@ import static org.junit.Assert.assertThat;
 
                 assertThat(result, hasSize(3));
 
-                assertThat(result.get(0).getOutNodeId(), is("outNodeId3"));
-                assertThat(result.get(0).getType(), is(relType));
-                assertThat(result.get(0).getInNodeId(), is("inNodeId3"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).outNodeId(), is("outNodeId3"));
+                assertThat(result.get(0).type(), is(relType));
+                assertThat(result.get(0).inNodeId(), is("inNodeId3"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
 
-                assertThat(result.get(1).getOutNodeId(), is("outNodeId1"));
-                assertThat(result.get(1).getType(), is(relType));
-                assertThat(result.get(1).getInNodeId(), is("inNodeId1"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(1).outNodeId(), is("outNodeId1"));
+                assertThat(result.get(1).type(), is(relType));
+                assertThat(result.get(1).inNodeId(), is("inNodeId1"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
 
-                assertThat(result.get(2).getOutNodeId(), is("outNodeId2"));
-                assertThat(result.get(2).getType(), is(relType));
-                assertThat(result.get(2).getInNodeId(), is("inNodeId2"));
-                assertThat(result.get(2).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(2).outNodeId(), is("outNodeId2"));
+                assertThat(result.get(2).type(), is(relType));
+                assertThat(result.get(2).inNodeId(), is("inNodeId2"));
+                assertThat(result.get(2).properties().entrySet(), is(empty()));
             }
 
             {
@@ -743,20 +747,20 @@ import static org.junit.Assert.assertThat;
 
                 assertThat(result, hasSize(3));
 
-                assertThat(result.get(0).getOutNodeId(), is("outNodeId2"));
-                assertThat(result.get(0).getType(), is(relType));
-                assertThat(result.get(0).getInNodeId(), is("inNodeId2"));
-                assertThat(result.get(0).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(0).outNodeId(), is("outNodeId2"));
+                assertThat(result.get(0).type(), is(relType));
+                assertThat(result.get(0).inNodeId(), is("inNodeId2"));
+                assertThat(result.get(0).properties().entrySet(), is(empty()));
 
-                assertThat(result.get(1).getOutNodeId(), is("outNodeId1"));
-                assertThat(result.get(1).getType(), is(relType));
-                assertThat(result.get(1).getInNodeId(), is("inNodeId1"));
-                assertThat(result.get(1).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(1).outNodeId(), is("outNodeId1"));
+                assertThat(result.get(1).type(), is(relType));
+                assertThat(result.get(1).inNodeId(), is("inNodeId1"));
+                assertThat(result.get(1).properties().entrySet(), is(empty()));
 
-                assertThat(result.get(2).getOutNodeId(), is("outNodeId3"));
-                assertThat(result.get(2).getType(), is(relType));
-                assertThat(result.get(2).getInNodeId(), is("inNodeId3"));
-                assertThat(result.get(2).getProperties().entrySet(), is(empty()));
+                assertThat(result.get(2).outNodeId(), is("outNodeId3"));
+                assertThat(result.get(2).type(), is(relType));
+                assertThat(result.get(2).inNodeId(), is("inNodeId3"));
+                assertThat(result.get(2).properties().entrySet(), is(empty()));
             }
         }
     }

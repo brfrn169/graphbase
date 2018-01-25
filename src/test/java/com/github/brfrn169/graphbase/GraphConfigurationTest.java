@@ -18,6 +18,6 @@ public class GraphConfigurationTest {
         assertEquals("{\"graphId\":\"test_graph\"}", json);
 
         GraphConfiguration graphConf = JSON.readValue(json, GraphConfiguration.class);
-        assertEquals(TEST_GRAPH_ID, graphConf.getGraphId());
+        assertEquals(TEST_GRAPH_ID, graphConf.graphId());
     }
 }

@@ -1,11 +1,14 @@
 package com.github.brfrn169.graphbase;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public final class PropertyProjections {
 
@@ -17,8 +20,7 @@ public final class PropertyProjections {
     private final Type type;
     private final Set<String> propertyKeys;
 
-    @JsonCreator private PropertyProjections(@JsonProperty("type") Type type,
-        @JsonProperty("propertyKeys") Set<String> propertyKeys) {
+    private PropertyProjections(Type type, Set<String> propertyKeys) {
         this.type = type;
         this.propertyKeys = propertyKeys;
     }

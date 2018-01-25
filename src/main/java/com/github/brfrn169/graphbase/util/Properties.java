@@ -1,11 +1,11 @@
 package com.github.brfrn169.graphbase.util;
 
+import lombok.experimental.UtilityClass;
+
 import java.util.HashMap;
 import java.util.Map;
 
-public final class Properties {
-    private Properties() {
-    }
+@UtilityClass public class Properties {
 
     @SuppressWarnings("unchecked")
     public static int comparePropertyValue(Object left, Object right) {

@@ -133,7 +133,7 @@ public class GraphCatalogManager implements Closeable {
     public void createGraph(GraphConfiguration graphConf) {
         try {
             client.create().withMode(CreateMode.PERSISTENT).withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
-                .forPath(catalogBasePath + "/" + graphConf.getGraphId(),
+                .forPath(catalogBasePath + "/" + graphConf.graphId(),
                     json.writeValueAsBytes(graphConf));
         } catch (final KeeperException.NodeExistsException e) {
             throw new GraphAlreadyExistsException();

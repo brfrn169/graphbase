@@ -1,7 +1,12 @@
 package com.github.brfrn169.graphbase.hbase;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.github.brfrn169.graphbase.*;
+import com.github.brfrn169.graphbase.GraphConfiguration;
+import com.github.brfrn169.graphbase.GraphStorage;
+import com.github.brfrn169.graphbase.GraphbaseConstants;
+import com.github.brfrn169.graphbase.Node;
+import com.github.brfrn169.graphbase.PropertyProjections;
+import com.github.brfrn169.graphbase.Relationship;
 import com.github.brfrn169.graphbase.exception.NodeAlreadyExistsException;
 import com.github.brfrn169.graphbase.exception.NodeNotFoundException;
 import com.github.brfrn169.graphbase.exception.RelationshipAlreadyExistsException;
@@ -13,20 +18,46 @@ import com.github.brfrn169.graphbase.sort.SortComparator;
 import com.github.brfrn169.graphbase.sort.SortPredicate;
 import com.github.brfrn169.graphbase.util.Json;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.*;
-import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.KeepDeletedCells;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.RowMutations;
+import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
-import org.apache.hadoop.hbase.types.*;
-import org.apache.hadoop.hbase.util.*;
+import org.apache.hadoop.hbase.types.RawByte;
+import org.apache.hadoop.hbase.types.RawInteger;
+import org.apache.hadoop.hbase.types.RawString;
+import org.apache.hadoop.hbase.types.RawStringTerminated;
+import org.apache.hadoop.hbase.types.Struct;
+import org.apache.hadoop.hbase.types.StructBuilder;
+import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Hash;
+import org.apache.hadoop.hbase.util.MurmurHash3;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.PositionedByteRange;
+import org.apache.hadoop.hbase.util.SimplePositionedByteRange;
+import org.apache.hadoop.hbase.util.SimplePositionedMutableByteRange;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -191,7 +222,7 @@ public class HBaseGraphStorage implements GraphStorage {
         populatePutWithProperties(put, NODE_FAMILY, properties);
 
         if (!hbaseClient.checkAndPut(put.getRow(), NODE_FAMILY, NODE_QUALIFIER_TYPE, null, put,
-            getNodeTableName(graphConf.getGraphId()))) {
+            getNodeTableName(graphConf.graphId()))) {
             throw new NodeAlreadyExistsException();
         }
     }
@@ -201,7 +232,7 @@ public class HBaseGraphStorage implements GraphStorage {
 
         if (!hbaseClient.checkAndDelete(delete.getRow(), NODE_FAMILY, NODE_QUALIFIER_TYPE,
             CompareFilter.CompareOp.LESS, ONE_BYTE_ARRAY, delete,
-            getNodeTableName(graphConf.getGraphId()))) {
+            getNodeTableName(graphConf.graphId()))) {
 
             throw new NodeNotFoundException();
         }
@@ -232,7 +263,7 @@ public class HBaseGraphStorage implements GraphStorage {
             addMutations(mutation, delete);
         }
 
-        hbaseClient.mutateRow(mutation, getNodeTableName(graphConf.getGraphId()));
+        hbaseClient.mutateRow(mutation, getNodeTableName(graphConf.graphId()));
     }
 
     @Override public Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
@@ -260,7 +291,7 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         boolean includeAddAt2 = includeAddAt; // too ugly
-        return hbaseClient.get(get, getNodeTableName(graphConf.getGraphId()),
+        return hbaseClient.get(get, getNodeTableName(graphConf.graphId()),
             result -> Optional.of(resultToNode(result, includeAddAt2)));
     }
 
@@ -312,7 +343,7 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         boolean includeAddAt2 = includeAddAt; // too ugly
-        Stream<Node> ret = hbaseClient.scan(scan, getNodeTableName(graphConf.getGraphId()),
+        Stream<Node> ret = hbaseClient.scan(scan, getNodeTableName(graphConf.graphId()),
             result -> resultToNode(result, includeAddAt2));
 
         if (filter != null) {
@@ -326,9 +357,9 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         ret = ret.map(r -> {
-            Map<String, Object> properties = propertyProjections.filter(r.getProperties());
-            if (r.getProperties() != null) {
-                return new Node(r.getId(), r.getType(), properties);
+            Map<String, Object> properties = propertyProjections.filter(r.properties());
+            if (r.properties() != null) {
+                return new Node(r.id(), r.type(), properties);
             }
             return r;
         });
@@ -342,7 +373,7 @@ public class HBaseGraphStorage implements GraphStorage {
 
     private boolean nodeExists(GraphConfiguration graphConf, byte[] row) {
         Get get = new Get(row).addColumn(NODE_FAMILY, NODE_QUALIFIER_TYPE);
-        return hbaseClient.exists(get, getNodeTableName(graphConf.getGraphId()));
+        return hbaseClient.exists(get, getNodeTableName(graphConf.graphId()));
     }
 
     private byte[] createNodeRow(String nodeId) {
@@ -405,7 +436,7 @@ public class HBaseGraphStorage implements GraphStorage {
 
         if (!hbaseClient
             .checkAndPut(put.getRow(), REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER, null, put,
-                getRelTableName(graphConf.getGraphId()))) {
+                getRelTableName(graphConf.graphId()))) {
             throw new RelationshipAlreadyExistsException();
         }
     }
@@ -416,7 +447,7 @@ public class HBaseGraphStorage implements GraphStorage {
         Delete delete = new Delete(createRelRow(outNodeId, relType, inNodeId));
 
         if (!hbaseClient.checkAndDelete(delete.getRow(), REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER,
-            EXISTENCE_MARKER, delete, getRelTableName(graphConf.getGraphId()))) {
+            EXISTENCE_MARKER, delete, getRelTableName(graphConf.graphId()))) {
             throw new RelationshipNotFoundException();
         }
     }
@@ -445,7 +476,7 @@ public class HBaseGraphStorage implements GraphStorage {
             addMutations(mutation, delete);
         }
 
-        hbaseClient.mutateRow(mutation, getRelTableName(graphConf.getGraphId()));
+        hbaseClient.mutateRow(mutation, getRelTableName(graphConf.graphId()));
     }
 
     @Override
@@ -475,7 +506,7 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         boolean includeAddAt2 = includeAddAt; // too ugly
-        return hbaseClient.get(get, getRelTableName(graphConf.getGraphId()),
+        return hbaseClient.get(get, getRelTableName(graphConf.graphId()),
             result -> Optional.of(resultToRel(result, includeAddAt2)));
     }
 
@@ -523,12 +554,12 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         boolean includeAddAt2 = includeAddAt; // too ugly
-        Stream<Relationship> ret = hbaseClient.scan(scan, getRelTableName(graphConf.getGraphId()),
+        Stream<Relationship> ret = hbaseClient.scan(scan, getRelTableName(graphConf.graphId()),
             result -> resultToRel(result, includeAddAt2));
 
         if (relTypes != null && !relTypes.isEmpty()) {
             Set<String> typesSet = new HashSet<>(relTypes);
-            ret = ret.filter(r -> typesSet.contains(r.getType()));
+            ret = ret.filter(r -> typesSet.contains(r.type()));
         }
 
         if (filter != null) {
@@ -542,9 +573,9 @@ public class HBaseGraphStorage implements GraphStorage {
         }
 
         ret = ret.map(r -> {
-            Map<String, Object> properties = propertyProjections.filter(r.getProperties());
-            if (r.getProperties() != null) {
-                return new Relationship(r.getOutNodeId(), r.getType(), r.getInNodeId(), properties);
+            Map<String, Object> properties = propertyProjections.filter(r.properties());
+            if (r.properties() != null) {
+                return new Relationship(r.outNodeId(), r.type(), r.inNodeId(), properties);
             }
             return r;
         });
@@ -559,7 +590,7 @@ public class HBaseGraphStorage implements GraphStorage {
 
     private boolean relExists(GraphConfiguration graphConf, byte[] row) {
         Get get = new Get(row).addColumn(REL_FAMILY, REL_QUALIFIER_EXISTENCE_MARKER);
-        return hbaseClient.exists(get, getRelTableName(graphConf.getGraphId()));
+        return hbaseClient.exists(get, getRelTableName(graphConf.graphId()));
     }
 
     private byte[] createRelRow(String outNodeId, String relType, String inNodeId) {

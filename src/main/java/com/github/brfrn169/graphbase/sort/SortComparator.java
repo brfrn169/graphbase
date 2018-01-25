@@ -19,8 +19,8 @@ public class SortComparator implements Comparator<Entity> {
         for (SortPredicate sort : sorts) {
             String propertyKey = sort.getPropertyKey();
 
-            Object leftPropertyValue = left.getPropertyValue(propertyKey);
-            Object rightPropertyValue = right.getPropertyValue(propertyKey);
+            Object leftPropertyValue = left.propertyValue(propertyKey);
+            Object rightPropertyValue = right.propertyValue(propertyKey);
 
             if (leftPropertyValue != null && rightPropertyValue == null) {
                 return 1;
