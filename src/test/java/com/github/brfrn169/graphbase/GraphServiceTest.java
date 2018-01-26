@@ -8,9 +8,11 @@ import com.github.brfrn169.graphbase.hbase.HBaseGraphStorage;
 import com.github.brfrn169.graphbase.util.Properties;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
-import org.junit.Test;
-import org.junit.experimental.runners.Enclosed;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -21,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -35,31 +36,20 @@ import static com.github.brfrn169.graphbase.sort.SortPredicate.Builder.asc;
 import static com.github.brfrn169.graphbase.sort.SortPredicate.Builder.desc;
 import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasEntry;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
-import static org.hamcrest.collection.IsEmptyCollection.empty;
-import static org.hamcrest.collection.IsMapContaining.hasEntry;
-import static org.hamcrest.collection.IsMapContaining.hasKey;
 import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@RunWith(Enclosed.class) public abstract class GraphServiceTest {
 
-    private static HBaseTestingUtility testUtil = new HBaseTestingUtility();
+@DisplayName("Tests for the graph service") public class GraphServiceTest {
+
+    private static HBaseTestingUtility testUtil;
     private static GraphService graphService;
-
-    protected static void initialize(Function<Configuration, GraphStorage> getGraphStorage)
-        throws Exception {
-        Configuration conf = testUtil.getConfiguration();
-        conf.setBoolean(HBaseGraphStorage.TABLE_COMPRESSION_CONF_KEY, false);
-        testUtil.startMiniCluster();
-
-        graphService = new GraphService(conf, getGraphStorage.apply(conf));
-    }
-
-    protected static void shutdown() throws Exception {
-        graphService.close();
-        testUtil.shutdownMiniCluster();
-    }
+    private static GraphStorage graphStorage;
 
     private static void createGraph(String graphId) {
         graphService.createGraph(new GraphConfiguration(graphId));
@@ -78,8 +68,25 @@ import static org.junit.Assert.assertThat;
         }
     }
 
-    public static class GraphCatalogRelatedTest {
-        @Test public void createAndDropGraph() {
+    @BeforeAll public static void beforeAll() throws Exception {
+        testUtil = new HBaseTestingUtility();
+        Configuration conf = testUtil.getConfiguration();
+        conf.setBoolean(HBaseGraphStorage.TABLE_COMPRESSION_CONF_KEY, false);
+        testUtil.startMiniCluster();
+
+        graphStorage = new HBaseGraphStorage(conf);
+        graphService = new GraphService(conf, graphStorage);
+    }
+
+    @AfterAll public static void afterAll() throws Exception {
+        graphService.close();
+        graphStorage.close();
+        testUtil.shutdownMiniCluster();
+    }
+
+    @Nested @DisplayName("Tests for graph catalog") public class GraphCatalogRelatedTest {
+        @Test @DisplayName("Test for creating and dropping the graph")
+        public void createAndDropGraph() {
             final String graphId = "GraphCatalogRelatedTest-createAndDropGraph";
 
             createGraph(graphId);
@@ -89,16 +96,20 @@ import static org.junit.Assert.assertThat;
             assertThat(graphConfiguration.isPresent(), is(true));
             graphConfiguration.ifPresent(graphConf -> assertThat(graphConf.graphId(), is(graphId)));
 
+            assertThat(graphService.graphExists(graphId), is(true));
+
             graphService.dropGraph(graphId);
 
             graphConfiguration = graphService.getGraphConfiguration(graphId);
             assertThat(graphConfiguration.isPresent(), is(false));
+
+            assertThat(graphService.graphExists(graphId), is(false));
         }
     }
 
 
-    public static class NodeRelatedTest {
-        @Test(expected = NodeAlreadyExistsException.class)
+    @Nested @DisplayName("Tests related to nodes") public class NodeRelatedTest {
+        @Test @DisplayName("Test for creating the node when it already exists")
         public void createNodeWhenAlreadyNodeExists() {
             final String graphId = "NodeRelatedTest-createNodeWhenAlreadyNodeExists";
             final String nodeId = "nodeId";
@@ -107,10 +118,12 @@ import static org.junit.Assert.assertThat;
             createGraph(graphId);
 
             graphService.addNode(graphId, nodeId, nodeType, Collections.emptyMap());
-            graphService.addNode(graphId, nodeId, nodeType, Collections.emptyMap());
+
+            assertThrows(NodeAlreadyExistsException.class,
+                () -> graphService.addNode(graphId, nodeId, nodeType, Collections.emptyMap()));
         }
 
-        @Test public void updateNode() {
+        @Test @DisplayName("Test for updating the node") public void updateNode() {
             final String graphId = "NodeRelatedTest-updateNode";
             final String nodeId = "nodeId";
             final String nodeType = "nodeType";
@@ -124,13 +137,13 @@ import static org.junit.Assert.assertThat;
 
             graphService.addNode(graphId, nodeId, nodeType, properties);
 
-            final Map<String, Object> updateProperties = new HashMap<>();
-            updateProperties.put(propertyKey1, "value3");
+            final Map<String, Object> setProperties = new HashMap<>();
+            setProperties.put(propertyKey1, "value3");
 
             final Set<String> deleteKeys = new HashSet<>();
             deleteKeys.add(propertyKey2);
 
-            graphService.updateNode(graphId, nodeId, updateProperties, deleteKeys);
+            graphService.updateNode(graphId, nodeId, new Mutation(setProperties, deleteKeys));
 
             Optional<Node> node = graphService.getNode(graphId, nodeId, withAllProperties());
             assertThat(node.isPresent(), is(true));
@@ -140,29 +153,30 @@ import static org.junit.Assert.assertThat;
                 assertThat(n.type(), is(nodeType));
 
                 assertThat(n.properties().entrySet(), hasSize(2));
-                assertThat(n.properties(),
-                    hasEntry(propertyKey1, updateProperties.get(propertyKey1)));
+                assertThat(n.properties(), hasEntry(propertyKey1, setProperties.get(propertyKey1)));
                 assertThat(n.properties(), not(hasKey(propertyKey2)));
                 assertThat(n.properties(), hasKey(GraphbaseConstants.PROPERTY_ADD_AT));
             });
         }
 
-        @Test(expected = NodeNotFoundException.class) public void updateNodeWhenNodeNotExists() {
+        @Test @DisplayName("Test for updating the node when it does not exist")
+        public void updateNodeWhenNodeNotExists() {
             final String graphId = "NodeRelatedTest-updateNodeWhenNodeNotExists";
             final String nodeId = "nodeId";
 
             createGraph(graphId);
 
-            final Map<String, Object> updatedProperties = new HashMap<>();
-            updatedProperties.put("key1", "value");
+            Map<String, Object> setProperties = new HashMap<>();
+            setProperties.put("key1", "value");
 
-            final Set<String> deletedKeys = new HashSet<>();
+            Set<String> deletedKeys = new HashSet<>();
             deletedKeys.add("key2");
 
-            graphService.updateNode(graphId, nodeId, updatedProperties, deletedKeys);
+            assertThrows(NodeNotFoundException.class, () -> graphService
+                .updateNode(graphId, nodeId, new Mutation(setProperties, deletedKeys)));
         }
 
-        @Test public void deleteNode() {
+        @Test @DisplayName("Test for deleting the node") public void deleteNode() {
             final String graphId = "NodeRelatedTest-deleteNode";
             final String nodeId = "nodeId";
             final String nodeType = "nodeType";
@@ -177,16 +191,18 @@ import static org.junit.Assert.assertThat;
             assertThat(node.isPresent(), is(false));
         }
 
-        @Test(expected = NodeNotFoundException.class) public void deleteNodeWhenNodeNotExists() {
+        @Test @DisplayName("Test for deleting the node when it does not exist")
+        public void deleteNodeWhenNodeNotExists() {
             final String graphId = "NodeRelatedTest-deleteNodeWhenNodeNotExists";
             final String nodeId = "nodeId";
 
             createGraph(graphId);
 
-            graphService.deleteNode(graphId, nodeId);
+            assertThrows(NodeNotFoundException.class,
+                () -> graphService.deleteNode(graphId, nodeId));
         }
 
-        @Test public void getNode() {
+        @Test @DisplayName("Test for getting the node") public void getNode() {
             final String graphId = "NodeRelatedTest-getNode";
             final String nodeId = "nodeId";
             final String nodeType = "nodeType";
@@ -238,7 +254,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getNodeWhenNodeNotExists() {
+        @Test @DisplayName("Test for getting the node when it does not exists")
+        public void getNodeWhenNodeNotExists() {
             final String graphId = "NodeRelatedTest-getNodeWhenNodeNotExists";
             final String nodeId = "nodeId";
 
@@ -248,7 +265,7 @@ import static org.junit.Assert.assertThat;
             assertThat(node.isPresent(), is(false));
         }
 
-        @Test public void nodeExists() {
+        @Test @DisplayName("Test for checking if the node exists") public void nodeExists() {
             final String graphId = "NodeRelatedTest-nodeExists";
 
             createGraph(graphId);
@@ -258,7 +275,8 @@ import static org.junit.Assert.assertThat;
             assertThat(graphService.nodeExists(graphId, "nodeId2"), is(false));
         }
 
-        @Test public void getNodesWithSpecifyingType() {
+        @Test @DisplayName("Test for getting the node with specifying the type")
+        public void getNodesWithSpecifyingType() {
             final String graphId = "NodeRelatedTest-getNodesWithSpecifyingType";
             final String nodeIdPrefix = "nodeId";
             final String nodeType1 = "nodeType1";
@@ -313,7 +331,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getNodesWithSpecifyingFilter() {
+        @Test @DisplayName("Test for getting the node with specifying the filter")
+        public void getNodesWithSpecifyingFilter() {
             final String graphId = "NodeRelatedTest-getNodesWithSpecifyingFilter";
             final String nodeType = "nodeType";
             final String propertyKey = "prop";
@@ -346,7 +365,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getNodesWithSpecifyingSort() {
+        @Test @DisplayName("Test for getting the node with specifying the sort")
+        public void getNodesWithSpecifyingSort() {
             final String graphId = "NodeRelatedTest-getNodesWithSpecifyingSort";
             final String nodeType = "nodeType";
             final String propertyKey = "prop";
@@ -388,8 +408,8 @@ import static org.junit.Assert.assertThat;
     }
 
 
-    public static class RelationshipRelatedTest {
-        @Test(expected = RelationshipAlreadyExistsException.class)
+    @Nested @DisplayName("Tests related to nodes") public class RelationshipRelatedTest {
+        @Test @DisplayName("Test for creating the relationship when it already exists")
         public void createRelationshipWhenAlreadyRelationshipExists() {
             final String graphId =
                 "RelationshipRelatedTest-createRelationshipWhenAlreadyRelationshipExists";
@@ -401,11 +421,12 @@ import static org.junit.Assert.assertThat;
 
             graphService
                 .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap());
-            graphService
-                .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap());
+
+            assertThrows(RelationshipAlreadyExistsException.class, () -> graphService
+                .addRelationship(graphId, outNodeId, relType, inNodeId, Collections.emptyMap()));
         }
 
-        @Test public void updateRelationship() {
+        @Test @DisplayName("Test for updating the relationship") public void updateRelationship() {
             final String graphId = "RelationshipRelatedTest-updateRelationship";
             final String outNodeId = "outNodeId";
             final String relType = "relType";
@@ -426,8 +447,8 @@ import static org.junit.Assert.assertThat;
             final Set<String> deleteKeys = new HashSet<>();
             deleteKeys.add(propertyKey2);
 
-            graphService.updateRelationship(graphId, outNodeId, relType, inNodeId, updateProperties,
-                deleteKeys);
+            graphService.updateRelationship(graphId, outNodeId, relType, inNodeId,
+                new Mutation(updateProperties, deleteKeys));
 
             Optional<Relationship> rel = graphService
                 .getRelationship(graphId, outNodeId, relType, inNodeId, withAllProperties());
@@ -446,7 +467,7 @@ import static org.junit.Assert.assertThat;
             });
         }
 
-        @Test(expected = RelationshipNotFoundException.class)
+        @Test @DisplayName("Test for updating the relationship when it does not exist")
         public void updateRelationshipWhenRelationshipNotExists() {
             final String graphId =
                 "RelationshipRelatedTest-updateRelationshipWhenRelationshipNotExists";
@@ -462,12 +483,12 @@ import static org.junit.Assert.assertThat;
             final Set<String> deletedKeys = new HashSet<>();
             deletedKeys.add("key2");
 
-            graphService
-                .updateRelationship(graphId, outNodeId, relType, inNodeId, updatedProperties,
-                    deletedKeys);
+            assertThrows(RelationshipNotFoundException.class, () -> graphService
+                .updateRelationship(graphId, outNodeId, relType, inNodeId,
+                    new Mutation(updatedProperties, deletedKeys)));
         }
 
-        @Test public void deleteRelationship() {
+        @Test @DisplayName("Test for deleting the relationship") public void deleteRelationship() {
             final String graphId = "RelationshipRelatedTest-deleteRelationship";
             final String outNodeId = "outNodeId";
             final String relType = "relType";
@@ -485,7 +506,7 @@ import static org.junit.Assert.assertThat;
             assertThat(rel.isPresent(), is(false));
         }
 
-        @Test(expected = RelationshipNotFoundException.class)
+        @Test @DisplayName("Test for deleting the relationship when it does not exist")
         public void deleteRelationshipWhenRelationshipNotExists() {
             final String graphId =
                 "RelationshipRelatedTest-deleteRelationshipWhenRelationshipNotExists";
@@ -495,10 +516,12 @@ import static org.junit.Assert.assertThat;
 
             createGraph(graphId);
 
-            graphService.deleteRelationship(graphId, outNodeId, relType, inNodeId);
+            assertThrows(RelationshipNotFoundException.class,
+                () -> graphService.deleteRelationship(graphId, outNodeId, relType, inNodeId));
+            ;
         }
 
-        @Test public void getRelationship() {
+        @Test @DisplayName("Test for getting the relationship") public void getRelationship() {
             final String graphId = "RelationshipRelatedTest-getRelationship";
             final String outNodeId = "outNodeId";
             final String relType = "relType";
@@ -556,7 +579,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getRelationshipWhenRelationshipNotExists() {
+        @Test @DisplayName("Test for getting the relationship when it does not exist")
+        public void getRelationshipWhenRelationshipNotExists() {
             final String graphId =
                 "RelationshipRelatedTest-getRelationshipWhenRelationshipNotExists";
             final String outNodeId = "outNodeId";
@@ -570,7 +594,8 @@ import static org.junit.Assert.assertThat;
             assertThat(rel.isPresent(), is(false));
         }
 
-        @Test public void relationshipExists() {
+        @Test @DisplayName("Test for checking if the relationship exists")
+        public void relationshipExists() {
             final String graphId = "RelationshipRelatedTest-relationshipExists";
 
             createGraph(graphId);
@@ -585,7 +610,8 @@ import static org.junit.Assert.assertThat;
                 is(false));
         }
 
-        @Test public void getRelationshipsWithSpecifyingType() {
+        @Test @DisplayName("Test for getting the relationship with specifying the type")
+        public void getRelationshipsWithSpecifyingType() {
             final String graphId = "RelationshipRelatedTest-getRelationshipsWithSpecifyingType";
             final String outNodeIdPrefix = "outNodeId";
             final String inNodeIdPrefix = "inNodeId";
@@ -658,7 +684,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getRelationshipsWithSpecifyingFilter() {
+        @Test @DisplayName("Test for getting the relationship with specifying the filter")
+        public void getRelationshipsWithSpecifyingFilter() {
             final String graphId = "RelationshipRelatedTest-getRelationshipsWithSpecifyingFilter";
             final String relType = "relType";
             final String propertyKey = "prop";
@@ -705,7 +732,8 @@ import static org.junit.Assert.assertThat;
             }
         }
 
-        @Test public void getRelationshipsWithSpecifyingSort() {
+        @Test @DisplayName("Test for getting the relationship with specifying the sort")
+        public void getRelationshipsWithSpecifyingSort() {
             final String graphId = "RelationshipRelatedTest-getRelationshipsWithSpecifyingSort";
             final String relType = "relType";
             final String propertyKey = "prop";

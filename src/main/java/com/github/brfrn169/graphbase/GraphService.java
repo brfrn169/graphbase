@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -51,6 +50,10 @@ public class GraphService implements Closeable {
         return graphCatalogManager.getGraphConfiguration(graphId);
     }
 
+    public boolean graphExists(String graphId) {
+        return graphCatalogManager.getGraphConfiguration(graphId).isPresent();
+    }
+
     public void addNode(String graphId, String nodeId, String nodeType,
         Map<String, Object> properties) {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
@@ -66,12 +69,11 @@ public class GraphService implements Closeable {
         graphStorage.deleteNode(graphConf, nodeId);
     }
 
-    public void updateNode(String graphId, String nodeId,
-        @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys) {
+    public void updateNode(String graphId, String nodeId, Mutation mutation) {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
             .orElseThrow(GraphNotFoundException::new);
 
-        graphStorage.updateNode(graphConf, nodeId, updateProperties, deleteKeys);
+        graphStorage.updateNode(graphConf, nodeId, mutation);
     }
 
     public void addRelationship(String graphId, String outNodeId, String relType, String inNodeId,
@@ -91,13 +93,11 @@ public class GraphService implements Closeable {
     }
 
     public void updateRelationship(String graphId, String outNodeId, String relType,
-        String inNodeId, @Nullable Map<String, Object> updateProperties,
-        @Nullable Set<String> deleteKeys) {
+        String inNodeId, Mutation mutation) {
         GraphConfiguration graphConf = graphCatalogManager.getGraphConfiguration(graphId)
             .orElseThrow(GraphNotFoundException::new);
 
-        graphStorage.updateRelationship(graphConf, outNodeId, relType, inNodeId, updateProperties,
-            deleteKeys);
+        graphStorage.updateRelationship(graphConf, outNodeId, relType, inNodeId, mutation);
     }
 
     public Optional<Node> getNode(String graphId, String nodeId,

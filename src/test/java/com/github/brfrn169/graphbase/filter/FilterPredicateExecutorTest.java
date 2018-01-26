@@ -2,15 +2,27 @@ package com.github.brfrn169.graphbase.filter;
 
 import com.github.brfrn169.graphbase.Node;
 import com.github.brfrn169.graphbase.util.Properties;
-import org.junit.Test;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.*;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.and;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.equal;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.greater;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.greaterOrEqual;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.isNotNull;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.isNull;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.less;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.lessOrEqual;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.notEqual;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.or;
+import static com.github.brfrn169.graphbase.filter.FilterPredicate.Builder.regex;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class FilterPredicateExecutorTest {
 
-    @Test public void test() {
+@DisplayName("Tests for FilterPredicateExecutor") public class FilterPredicateExecutorTest {
+
+    @Test @DisplayName("Test") public void test() {
         Node node = new Node("id", "type", Properties.property("prop1", 5, "prop2", "1234567890"));
 
         assertTrue(new FilterExecutor(equal("prop1", 5)).execute(node));

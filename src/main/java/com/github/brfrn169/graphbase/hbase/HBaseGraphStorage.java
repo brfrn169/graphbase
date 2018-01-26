@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.github.brfrn169.graphbase.GraphConfiguration;
 import com.github.brfrn169.graphbase.GraphStorage;
 import com.github.brfrn169.graphbase.GraphbaseConstants;
+import com.github.brfrn169.graphbase.Mutation;
 import com.github.brfrn169.graphbase.Node;
 import com.github.brfrn169.graphbase.PropertyProjections;
 import com.github.brfrn169.graphbase.Relationship;
@@ -238,8 +239,8 @@ public class HBaseGraphStorage implements GraphStorage {
         }
     }
 
-    @Override public void updateNode(GraphConfiguration graphConf, String nodeId,
-        @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys) {
+    @Override
+    public void updateNode(GraphConfiguration graphConf, String nodeId, Mutation mutation) {
 
         byte[] row = createNodeRow(nodeId);
 
@@ -247,23 +248,24 @@ public class HBaseGraphStorage implements GraphStorage {
             throw new NodeNotFoundException();
         }
 
-        RowMutations mutation = new RowMutations(row);
+        RowMutations rowMutations = new RowMutations(row);
 
-        if (updateProperties != null) {
+        if (mutation.setProperties() != null && mutation.setProperties().size() > 0) {
             Put put = new Put(row);
-            populatePutWithProperties(put, NODE_FAMILY, updateProperties);
+            populatePutWithProperties(put, NODE_FAMILY, mutation.setProperties());
 
-            addMutations(mutation, put);
+            addMutations(rowMutations, put);
         }
 
-        if (deleteKeys != null) {
+        if (mutation.deleteKeys() != null && mutation.deleteKeys().size() > 0) {
             Delete delete = new Delete(row);
-            deleteKeys.forEach(key -> delete.addColumns(NODE_FAMILY, Bytes.toBytes(key)));
+            mutation.deleteKeys()
+                .forEach(key -> delete.addColumns(NODE_FAMILY, Bytes.toBytes(key)));
 
-            addMutations(mutation, delete);
+            addMutations(rowMutations, delete);
         }
 
-        hbaseClient.mutateRow(mutation, getNodeTableName(graphConf.graphId()));
+        hbaseClient.mutateRow(rowMutations, getNodeTableName(graphConf.graphId()));
     }
 
     @Override public Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
@@ -454,29 +456,28 @@ public class HBaseGraphStorage implements GraphStorage {
 
     @Override
     public void updateRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
-        String inNodeId, @Nullable Map<String, Object> updateProperties,
-        @Nullable Set<String> deleteKeys) {
+        String inNodeId, Mutation mutation) {
 
         byte[] row = createRelRow(outNodeId, relType, inNodeId);
 
         if (!relExists(graphConf, row))
             throw new RelationshipNotFoundException();
 
-        RowMutations mutation = new RowMutations(row);
+        RowMutations rowMutations = new RowMutations(row);
 
-        if (updateProperties != null && updateProperties.size() > 0) {
+        if (mutation.setProperties() != null && mutation.setProperties().size() > 0) {
             Put put = new Put(row);
-            populatePutWithProperties(put, REL_FAMILY, updateProperties);
-            addMutations(mutation, put);
+            populatePutWithProperties(put, REL_FAMILY, mutation.setProperties());
+            addMutations(rowMutations, put);
         }
 
-        if (deleteKeys != null && deleteKeys.size() > 0) {
+        if (mutation.deleteKeys() != null && mutation.deleteKeys().size() > 0) {
             Delete delete = new Delete(row);
-            deleteKeys.forEach(key -> delete.addColumns(REL_FAMILY, Bytes.toBytes(key)));
-            addMutations(mutation, delete);
+            mutation.deleteKeys().forEach(key -> delete.addColumns(REL_FAMILY, Bytes.toBytes(key)));
+            addMutations(rowMutations, delete);
         }
 
-        hbaseClient.mutateRow(mutation, getRelTableName(graphConf.graphId()));
+        hbaseClient.mutateRow(rowMutations, getRelTableName(graphConf.graphId()));
     }
 
     @Override

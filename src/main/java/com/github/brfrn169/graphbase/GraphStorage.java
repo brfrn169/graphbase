@@ -8,7 +8,6 @@ import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Stream;
 
 public interface GraphStorage extends Closeable {
@@ -21,8 +20,7 @@ public interface GraphStorage extends Closeable {
 
     void deleteNode(GraphConfiguration graphConf, String nodeId);
 
-    void updateNode(GraphConfiguration graphConf, String nodeId,
-        @Nullable Map<String, Object> updateProperties, @Nullable Set<String> deleteKeys);
+    void updateNode(GraphConfiguration graphConf, String nodeId, Mutation mutation);
 
     void createRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
         String inNodeId, Map<String, Object> properties);
@@ -31,8 +29,7 @@ public interface GraphStorage extends Closeable {
         String inNodeId);
 
     void updateRelationship(GraphConfiguration graphConf, String outNodeId, String relType,
-        String inNodeId, @Nullable Map<String, Object> updateProperties,
-        @Nullable Set<String> deleteKeys);
+        String inNodeId, Mutation mutation);
 
     Optional<Node> getNode(GraphConfiguration graphConf, String nodeId,
         PropertyProjections propertyProjections);
