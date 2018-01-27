@@ -1,6 +1,17 @@
+dist: trusty
 language: java
 jdk: oraclejdk8
-
+env:
+  global:
+    secure: Eq9NCBKAp/FSeRPlWYnDdlJxdyPcI65lhzPK8jAOcZAhWodvljOEGk1Yo/uP9dteGxsYjxyq4arrbJEKuGBzABvbx4uGHrElr1/FuIaEAQUSF8bT/w5GVNL7Sr47+GxqvlhYzTMep8xROR7v/3IP2qg1IXFWAB8Ao5lQAfPSV/ffHlPYvFUDo931tTHR5iMtLcSXB7LygHNgcBckwyozR5dJL2zzCGtt9ETowm0HvQvu3NVSL/5G6LxWMP6YCIZnHYtjN9kVlDCA4yZX971iqfOtr42/TDAjezSiNCZb3Ko0c5XpCKx4HG1eFAEN4ScUcgqeGW3D0gAFyt4Gso+E4t/pXRXNKtolXThsnFx7OSw3BXuNQKSEzDxEx4jXsOdu/j378DWCGQdiuiuNUJnLct3cO1GpSiS7PDcFibVSftvrWC1mcZZz/1FnsbnHYlrPeNzl0Li8BBJ/jF739sCypvm2r0MGZM+tHOjlaf5kShr58epq52VK7Fl9Nn/UN9D223O/ceQLCV5NjfJElnWa2FagQLH2yH1cvHC/kPZDEs+I8Pxv4XDke1seeyY4fd2nhMw+TD8YE1+IqvuDRmvlJdNPhPzLu6txfrdN+RZv/pK34Lk759437hW+V/kael+5SH/p225t1R/14XfUaKJiAdn6R7Hq8xKZ9pO6D0fgEtE=
+addons:
+  sonarcloud:
+    organization: brfrn169-github
+    token:
+      secure: "$SONAR_TOKEN"
 script:
-- ./mvnw clean install -B
-- ./mvnw clean org.jacoco:jacoco-maven-plugin:prepare-agent package
+- mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent install sonar:sonar
+cache:
+  directories:
+  - "$HOME/.m2/repository"
+  - "$HOME/.sonar/cache"
